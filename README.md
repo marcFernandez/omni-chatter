@@ -10,10 +10,9 @@ Because I'm learning [Rust](https://www.rust-lang.org/)
 ### Episodes
 
 1. Twitch integration and command parsing ([video](https://www.twitch.tv/videos/2014622800))
-2. Refactoring commands and file persistence (TBD)
-3. Channels and non-blocking receipts (TBD)
-4. Multi-threading and Youtube chat (TBD)
-5. ¯\\_(ツ)_/¯
+2. File persistence, refactoring and first multithreading ([video](https://www.twitch.tv/videos/2016632984))
+3. Add "create" commands and new source (probably YT) (TBD)
+4. ¯\\_(ツ)_/¯
 
 ### Goal
 
