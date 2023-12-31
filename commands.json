@@ -1,10 +1,14 @@
 {
-    "today": {
-        "name": "today",
-        "contents": "Today we will continue buiding our multiplatform bot https://github.com/marcFernandez/omni-chatter"
+    "playlist": {
+        "contents": "https://open.spotify.com/artist/7CvWoscqVQJvqb0OcBRQO7?si=ljc9D2sDTny2YPmudQ_ZkA",
+        "name": "playlist"
     },
     "socials": {
-        "name": "socials",
-        "contents": "Github: https://github.com/marcFernandez"
+        "contents": "Github: https://github.com/marcFernandez",
+        "name": "socials"
+    },
+    "today": {
+        "contents": "Today we will continue buiding our multiplatform bot https://github.com/marcFernandez/omni-chatter | adding \"create\" commands and ui",
+        "name": "today"
     }
 }

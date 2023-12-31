@@ -5,11 +5,12 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use serde_json::{from_str, Value};
+use serde_json::{from_str, json, Value};
 
 type HandleCommandResult<T> = std::result::Result<T, MissingCommand>;
 
 pub static COMMAND_SYMBOL: char = '!';
+pub static CREATE_COMMAND_SYMBOL: char = '#';
 
 #[derive(Debug, Clone)]
 pub struct MissingCommand {
@@ -69,12 +70,17 @@ impl CommandHandler {
         // !settoday args
         let mut iter = msg.split(" ");
         let command = iter.next().expect("Message to not be empty");
+
         if command.starts_with("set") {
             return self.handle_set_command(sender, command[3..].to_string(), iter.collect::<Vec<&str>>().join(" "));
         }
 
+        if command.starts_with(CREATE_COMMAND_SYMBOL) {
+            return self.handle_create_command(sender, command[1..].to_string(), iter.collect::<Vec<&str>>().join(" "));
+        }
+
         match self.contents.get(command) {
-            Some(command) => Ok(Some(command["contents"].to_string())),
+            Some(command) => Ok(Some(command["contents"].as_str().unwrap().to_string())),
             None => Err(MissingCommand { name: command.to_string() }),
         }
     }
@@ -102,5 +108,26 @@ impl CommandHandler {
             }
             None => Err(MissingCommand { name: command_name }),
         }
+    }
+
+    fn handle_create_command(&mut self, sender: String, command_name: String, new_contents: String) -> Result<Option<String>, MissingCommand> {
+        println!("#handle_create_command({sender}, {command_name}, {new_contents})");
+        if !is_sender_allowed(&sender) {
+            return Ok(Some(format!("I'm sorry {}. You are not allowed to execute this command.", sender)));
+        }
+
+        if self.contents.get(&command_name).is_some() {
+            eprintln!("ERROR - Command {command_name} already exists");
+        }
+
+        let new_command = json!({
+            "contents": new_contents,
+            "name": &command_name
+        });
+
+        self.contents[&command_name] = new_command;
+        self.write_file();
+
+        Ok(Some(format!("Created {command_name} command")))
     }
 }
