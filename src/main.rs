@@ -5,10 +5,11 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{command::CommandHandler, twitch::listen};
+use crate::{command::CommandHandler, twitch::listen, gui::run};
 
 mod command;
 mod twitch;
+mod gui;
 
 fn main() -> Result<()> {
     println!("ttv-bot");
@@ -19,5 +20,10 @@ fn main() -> Result<()> {
     let twitch_command_handler = command_handler.clone();
     thread::spawn(|| listen(twitch_command_handler));
 
-    loop {}
+    let gui_command_handler = command_handler.clone();
+
+    let _ = run(gui_command_handler);
+    Ok(())
+
+    //loop {}
 }
