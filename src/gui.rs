@@ -1,17 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::{
-    collections::HashSet,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
 use eframe::egui;
-use egui::{Color32, Label, RichText, Separator};
+use egui::{Color32, Label, RichText, Separator, TextEdit};
 
 use crate::command::{BotCommand, CommandHandler};
 
 #[derive(Clone)]
+#[allow(dead_code)]
 enum ToastLevel {
     Info,
     Warn,
@@ -80,7 +80,10 @@ impl OmniChatter {
 
 pub fn run(command_handler: Arc<Mutex<CommandHandler>>) -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 600.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_title("Omnichatter")
+            .with_min_inner_size([600.0, 300.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -99,7 +102,6 @@ impl eframe::App for OmniChatter {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // TODO: make it lock-safe aka not fail on lock error
         let mut command_handler = self.command_handler.lock().unwrap();
-        let command_names: &HashSet<String> = command_handler.get_command_names();
 
         // UI
         //
@@ -119,10 +121,11 @@ impl eframe::App for OmniChatter {
             ui.spacing_mut().item_spacing.y = 20.0;
             ui.label(RichText::new("Omnichatter").heading().strong())
         });
+
         egui::SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 5.0;
             ui.text_edit_singleline(&mut self.command_search);
-            for command_name in command_names {
+            for command_name in command_handler.get_command_names() {
                 if self.command_search.len() == 0 || command_name.starts_with(&self.command_search) {
                     if ui.button(&*command_name).clicked() {
                         self.command_search = String::new();
@@ -141,12 +144,16 @@ impl eframe::App for OmniChatter {
             };
         });
         egui::CentralPanel::default().show(ctx, |ui| {
+            // TODO: parametrize that and use manual positioning on Widgets
             ui.spacing_mut().item_spacing.x = 10.0;
             ui.spacing_mut().item_spacing.y = 10.0;
             ui.scope(|ui| match self.state {
                 State::DisplayCommand => {
                     ui.strong(&self.current_command.name);
-                    ui.text_edit_multiline(&mut self.current_command.contents);
+                    let available_rect = ctx.available_rect();
+                    let command_contents = TextEdit::multiline(&mut self.current_command.contents)
+                        .min_size([(available_rect.right() / 10.) * 7., available_rect.bottom() / 10.].into());
+                    ui.add(command_contents);
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                         if ui.button("Update").clicked() {
                             command_handler
@@ -155,7 +162,7 @@ impl eframe::App for OmniChatter {
                             self.toasts.push(Toast::new(
                                 Duration::from_secs_f32(1.25),
                                 format!("Command {} updated successfully", self.current_command.name),
-                                ToastLevel::Success
+                                ToastLevel::Success,
                             ))
                         }
                         if ui
@@ -168,7 +175,7 @@ impl eframe::App for OmniChatter {
                             self.toasts.push(Toast::new(
                                 Duration::from_secs_f32(1.25),
                                 format!("Command {} deleted successfully", self.current_command.name),
-                                ToastLevel::Success
+                                ToastLevel::Success,
                             ));
                             self.state = State::Idle;
                         }
@@ -189,14 +196,14 @@ impl eframe::App for OmniChatter {
                                 self.toasts.push(Toast::new(
                                     Duration::from_secs_f32(2.5),
                                     format!("Command {} created successfully!", &self.current_command.name),
-                                    ToastLevel::Success
+                                    ToastLevel::Success,
                                 ));
                                 self.state = State::DisplayCommand
                             }
                             Err(err) => self.toasts.push(Toast::new(
                                 Duration::from_secs_f32(2.5),
                                 format!("Error creating command: {:?}", err),
-                                ToastLevel::Error
+                                ToastLevel::Error,
                             )),
                         }
                     }
@@ -210,7 +217,7 @@ impl eframe::App for OmniChatter {
             let mut toasts: Vec<Toast> = Vec::new();
             for toast in &self.toasts {
                 if now.duration_since(toast.start).unwrap() < toast.duration {
-                    ui.add(toast.get_label());
+                    ui.add_sized([400., 400.], toast.get_label());
                     toasts.push(toast.clone());
                 }
             }

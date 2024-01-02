@@ -54,8 +54,18 @@ pub struct BotCommand {
 impl Into<BotCommand> for &Map<String, Value> {
     fn into(self) -> BotCommand {
         BotCommand {
-            name: self.get("name").expect("Command to have name property").as_str().unwrap().to_string(),
-            contents: self.get("contents").expect("Command to have name property").as_str().unwrap().to_string(),
+            name: self
+                .get("name")
+                .expect("Command to have name property")
+                .as_str()
+                .unwrap()
+                .to_string(),
+            contents: self
+                .get("contents")
+                .expect("Command to have name property")
+                .as_str()
+                .unwrap()
+                .to_string(),
         }
     }
 }
@@ -83,17 +93,40 @@ impl CommandHandler {
         let contents = read_file();
         let commands = contents.as_object().unwrap();
         let command_names = commands.keys().map(|key| key.to_string()).collect();
-        Self { contents, command_names }
+        Self {
+            contents,
+            command_names,
+        }
     }
 
     pub fn get_command(&self, command_name: &String) -> BotCommand {
-        from_value(self.contents.get(command_name).expect("Command to exist").to_owned()).expect("Command in file to be valid BotCommand")
+        from_value(self.contents.get(command_name).expect("Command to exist").to_owned())
+            .expect("Command in file to be valid BotCommand")
         // For now let's assume the command always exists
         //from_str(self.contents.get(command_name).unwrap().as_object().unwrap()).expect("Command from file to be valid BotCommand")
     }
 
-    pub fn get_command_names(&self) -> &HashSet<String> {
-        &self.command_names
+    pub fn get_command_names(&mut self) -> HashSet<String> {
+        if !self.command_names.contains("help") {
+            self.generate_help_command();
+        }
+        self.command_names.clone()
+    }
+
+    pub fn generate_help_command(&mut self) {
+        let mut help_contents = String::from("Available commands:");
+        for command_name in &self.command_names {
+            help_contents = format!("{help_contents} {COMMAND_SYMBOL}{command_name}");
+        }
+
+        let help_command = BotCommand {
+            name: "help".to_string(),
+            contents: help_contents,
+        };
+
+        self.create_command(&help_command).expect("To create the help command");
+        self.command_names.insert(help_command.name);
+        self.write_file();
     }
 
     pub fn update_command_content(&mut self, command_name: &String, new_contents: &String) -> Result<()> {
@@ -107,10 +140,43 @@ impl CommandHandler {
         }
     }
 
+    pub fn delete_command(&mut self, command_name: &String) -> Result<()> {
+        if !self.command_names.contains(command_name) {
+            return Err(anyhow::Error::msg(format!("Command {} does not exist", command_name)));
+        }
+
+        let mut new_contents: Map<String, Value> = Map::new();
+
+        for name in &self.command_names {
+            if *name != *command_name {
+                let command = &self.get_command(&name);
+                new_contents.insert(
+                    name.to_string(), // can this be achieved without copying?
+                    serde_json::from_str(
+                        serde_json::to_string(&command)
+                            .expect("command to be valid BotCommand")
+                            .as_str(),
+                    )
+                    .expect("stringified BotCommand to be valid Json"),
+                );
+            }
+        }
+
+        self.contents = Value::Object(new_contents);
+        self.command_names.remove(command_name);
+        self.write_file();
+
+        Ok(())
+    }
+
     pub fn create_command(&mut self, command: &BotCommand) -> Result<()> {
         // TODO: handle whitespace-only name and contents
         if command.name.is_empty() {
             return Err(anyhow::Error::msg("Command name cannot be empty"));
+        }
+
+        if command.name.find(' ').is_some() {
+            return Err(anyhow::Error::msg("Command name cannot contain spaces"));
         }
 
         if command.contents.is_empty() {
@@ -121,8 +187,12 @@ impl CommandHandler {
             return Err(anyhow::Error::msg(format!("Command {} alredy exists", command.name)));
         }
 
-        self.contents[&command.name] =
-            serde_json::from_str(serde_json::to_string(command).expect("command to be valid BotCommand").as_str()).expect("stringified BotCommand to be valid Json");
+        self.contents[&command.name] = serde_json::from_str(
+            serde_json::to_string(command)
+                .expect("command to be valid BotCommand")
+                .as_str(),
+        )
+        .expect("stringified BotCommand to be valid Json");
         self.command_names.insert(command.name.clone());
 
         self.write_file();
@@ -173,9 +243,17 @@ impl CommandHandler {
     /// ```
     /// self.handle_set_command("today", "Today we will build bla bla bla".to_string())
     /// ```
-    fn handle_set_command(&mut self, sender: String, command_name: String, new_contents: String) -> HandleCommandResult<Option<String>> {
+    fn handle_set_command(
+        &mut self,
+        sender: String,
+        command_name: String,
+        new_contents: String,
+    ) -> HandleCommandResult<Option<String>> {
         if !is_sender_allowed(&sender) {
-            return Ok(Some(format!("I'm sorry {}. You are not allowed to execute this command.", sender)));
+            return Ok(Some(format!(
+                "I'm sorry {}. You are not allowed to execute this command.",
+                sender
+            )));
         }
 
         match self.contents.get_mut(&command_name) {
@@ -188,19 +266,33 @@ impl CommandHandler {
         }
     }
 
-    fn handle_create_command(&mut self, sender: String, command_name: String, new_contents: String) -> Result<Option<String>, HandleCommandError> {
+    fn handle_create_command(
+        &mut self,
+        sender: String,
+        command_name: String,
+        new_contents: String,
+    ) -> Result<Option<String>, HandleCommandError> {
         if !is_sender_allowed(&sender) {
-            return Ok(Some(format!("I'm sorry {}. You are not allowed to execute this command.", sender)));
+            return Ok(Some(format!(
+                "I'm sorry {}. You are not allowed to execute this command.",
+                sender
+            )));
         }
 
         if self.contents.get(&command_name).is_some() {
             let msg = format!("ERROR - Command {command_name} already exists");
-            return Err(HandleCommandError::CreateCommand(CreateCommandError { name: command_name, msg }));
+            return Err(HandleCommandError::CreateCommand(CreateCommandError {
+                name: command_name,
+                msg,
+            }));
         }
 
         if new_contents.eq("") {
             let msg = format!("ERROR - No content for new command {command_name}");
-            return Err(HandleCommandError::CreateCommand(CreateCommandError { name: command_name, msg }));
+            return Err(HandleCommandError::CreateCommand(CreateCommandError {
+                name: command_name,
+                msg,
+            }));
         }
 
         let new_command = BotCommand {
@@ -208,7 +300,8 @@ impl CommandHandler {
             contents: new_contents,
         };
 
-        self.create_command(&new_command).expect("To be able to create the command");
+        self.create_command(&new_command)
+            .expect("To be able to create the command");
         self.write_file();
 
         Ok(Some(format!("Created {} command", new_command.name)))
