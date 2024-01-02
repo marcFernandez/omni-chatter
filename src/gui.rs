@@ -182,6 +182,7 @@ impl eframe::App for OmniChatter {
                     });
                 }
                 State::CreateCommand => {
+                    ui.strong("Create command");
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                         ui.label("name:");
                         ui.text_edit_singleline(&mut self.current_command.name);
