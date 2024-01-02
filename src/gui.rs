@@ -1,9 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::{
-    fmt::format,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime}, collections::HashSet,
 };
 
 use eframe::egui;
@@ -76,7 +75,7 @@ impl eframe::App for OmniChatter {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // TODO: make it lock-safe aka not fail on lock error
         let mut command_handler = self.command_handler.lock().unwrap();
-        let command_names: Vec<String> = command_handler.get_command_names();
+        let command_names: &HashSet<String> = command_handler.get_command_names();
 
         // UI
         //
@@ -97,7 +96,7 @@ impl eframe::App for OmniChatter {
         });
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             for command_name in command_names {
-                if ui.button(&command_name).clicked() {
+                if ui.button(&*command_name).clicked() {
                     self.current_command = command_handler.get_command(&command_name);
                     self.state = State::DisplayCommand;
                 };
@@ -143,7 +142,9 @@ impl eframe::App for OmniChatter {
                         }
                     }
                 }
-                State::Idle => {}
+                State::Idle => {
+                    ui.label("Select any command or action");
+                }
             });
             ui.add(Separator::default().horizontal());
             let now = SystemTime::now();

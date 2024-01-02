@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt,
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -6,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{from_str, from_value, json, Map, Value};
+use serde_json::{from_str, from_value, Map, Value};
 
 type HandleCommandResult<T> = std::result::Result<T, HandleCommandError>;
 
@@ -67,6 +68,7 @@ fn is_sender_allowed(sender: &str) -> bool {
 
 pub struct CommandHandler {
     contents: Value,
+    command_names: HashSet<String>,
 }
 
 fn read_file() -> Value {
@@ -79,7 +81,9 @@ fn read_file() -> Value {
 impl CommandHandler {
     pub fn new() -> Self {
         let contents = read_file();
-        Self { contents }
+        let commands = contents.as_object().unwrap();
+        let command_names = commands.keys().map(|key| key.to_string()).collect();
+        Self { contents, command_names }
     }
 
     pub fn get_command(&self, command_name: &String) -> BotCommand {
@@ -88,9 +92,8 @@ impl CommandHandler {
         //from_str(self.contents.get(command_name).unwrap().as_object().unwrap()).expect("Command from file to be valid BotCommand")
     }
 
-    pub fn get_command_names(&self) -> Vec<String> {
-        let commands = self.contents.as_object().unwrap();
-        commands.keys().map(|key| key.to_string()).collect()
+    pub fn get_command_names(&self) -> &HashSet<String> {
+        &self.command_names
     }
 
     pub fn update_command_content(&mut self, command_name: &String, new_contents: &String) -> Result<()> {
@@ -105,6 +108,7 @@ impl CommandHandler {
     }
 
     pub fn create_command(&mut self, command: &BotCommand) -> Result<()> {
+        // TODO: handle whitespace-only name and contents
         if command.name.is_empty() {
             return Err(anyhow::Error::msg("Command name cannot be empty"));
         }
@@ -113,8 +117,13 @@ impl CommandHandler {
             return Err(anyhow::Error::msg("Command contents cannot be empty"));
         }
 
+        if self.command_names.contains(&command.name) {
+            return Err(anyhow::Error::msg(format!("Command {} alredy exists", command.name)));
+        }
+
         self.contents[&command.name] =
             serde_json::from_str(serde_json::to_string(command).expect("command to be valid BotCommand").as_str()).expect("stringified BotCommand to be valid Json");
+        self.command_names.insert(command.name.clone());
 
         self.write_file();
 
@@ -194,14 +203,14 @@ impl CommandHandler {
             return Err(HandleCommandError::CreateCommand(CreateCommandError { name: command_name, msg }));
         }
 
-        let new_command = json!({
-            "contents": new_contents,
-            "name": &command_name
-        });
+        let new_command = BotCommand {
+            name: command_name,
+            contents: new_contents,
+        };
 
-        self.contents[&command_name] = new_command;
+        self.create_command(&new_command).expect("To be able to create the command");
         self.write_file();
 
-        Ok(Some(format!("Created {command_name} command")))
+        Ok(Some(format!("Created {} command", new_command.name)))
     }
 }
