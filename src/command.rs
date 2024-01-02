@@ -100,8 +100,25 @@ impl CommandHandler {
                 self.write_file();
                 Ok(())
             }
-            None => Err(anyhow::Error::msg("Command does not exist"))
+            None => Err(anyhow::Error::msg("Command does not exist")),
         }
+    }
+
+    pub fn create_command(&mut self, command: &BotCommand) -> Result<()> {
+        if command.name.is_empty() {
+            return Err(anyhow::Error::msg("Command name cannot be empty"));
+        }
+
+        if command.contents.is_empty() {
+            return Err(anyhow::Error::msg("Command contents cannot be empty"));
+        }
+
+        self.contents[&command.name] =
+            serde_json::from_str(serde_json::to_string(command).expect("command to be valid BotCommand").as_str()).expect("stringified BotCommand to be valid Json");
+
+        self.write_file();
+
+        Ok(())
     }
 
     fn write_file(&self) {
