@@ -5,8 +5,7 @@ how long I'll keep streaming).
 
 Update: Now it also has a UI where you can update the commands too
 
-![Second version of GUI](images/gui_v1.png)
-
+![Third version of GUI](images/gui_v2.png)
 
 ### Why are you building this?
 
@@ -20,8 +19,11 @@ Because I'm learning [Rust](https://www.rust-lang.org/)
     ![First version of GUI](images/gui_v0.png)
 4. Add "remove" commands in UI and colorful toasts ([video](https://www.twitch.tv/videos/2020135440))
     ![Second version of GUI](images/gui_v1.png)
-5. Make GUI less ugly
-6. ¯\\_(ツ)_/¯
+5. Add twitch chat to UI ([video](https://www.twitch.tv/videos/2022171772))
+    ![Third version of GUI](images/gui_v2.png)
+6. UI fixes and start youtube integration
+7. Explore sending messages from the UI
+8. ¯\\_(ツ)_/¯
 
 ### Goal
 
@@ -31,3 +33,5 @@ Create a multipurpose bot connected to different streaming platforms:
 - Youtube
 - Kick
 - Twitter
+
+Update: It also handles commands now
