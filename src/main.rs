@@ -13,6 +13,7 @@ mod gui;
 mod messages;
 mod twitch;
 mod youtube;
+mod youtube_model;
 
 fn main() -> Result<()> {
     println!("ttv-bot");
