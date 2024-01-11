@@ -35,3 +35,7 @@ Create a multipurpose bot connected to different streaming platforms:
 - Twitter
 
 Update: It also handles commands now
+
+### References
+
+- JSON to Rust: https://github.com/ritz078/transform
