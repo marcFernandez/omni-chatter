@@ -6,13 +6,35 @@ use std::{
 };
 
 use eframe::egui;
-use egui::{scroll_area::ScrollBarVisibility, Color32, Label, RichText, ScrollArea, Separator, TextEdit};
+use egui::{
+    include_image, scroll_area::ScrollBarVisibility, Button, Color32, FontFamily, FontId, Image, Label, RichText, ScrollArea, Separator,
+    TextEdit, ViewportBuilder,
+};
+
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
     command::{BotCommand, CommandHandler},
     messages::{Platform, PlatformMessage},
 };
+
+pub fn run(command_handler: Arc<Mutex<CommandHandler>>, receiver: UnboundedReceiver<PlatformMessage>) -> Result<(), eframe::Error> {
+    let options = eframe::NativeOptions {
+        viewport: ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_title("Omnichatter")
+            .with_min_inner_size([300.0, 300.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "OmniChatter",
+        options,
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Box::<OmniChatter>::new(OmniChatter::new(command_handler, receiver))
+        }),
+    )
+}
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -29,20 +51,22 @@ struct Toast {
     duration: Duration,
     msg: String,
     level: ToastLevel,
+    font_id: FontId,
 }
 
 impl Toast {
-    fn new(duration: Duration, msg: String, level: ToastLevel) -> Self {
+    fn new(duration: Duration, msg: String, level: ToastLevel, font_id: FontId) -> Self {
         Self {
             start: SystemTime::now(),
             duration,
             msg,
             level,
+            font_id,
         }
     }
 
     fn get_label(&self) -> Label {
-        let text = RichText::new(&self.msg);
+        let text = RichText::new(&self.msg).font(self.font_id.clone());
         let text = match self.level {
             ToastLevel::Info => text,
             ToastLevel::Warn => text.color(Color32::LIGHT_YELLOW),
@@ -58,6 +82,7 @@ enum State {
     CreateCommand,
     Idle,
     ChatFullScreen,
+    Config,
 }
 
 struct OmniChatter {
@@ -69,6 +94,7 @@ struct OmniChatter {
     receiver: UnboundedReceiver<PlatformMessage>,
     platform_messages: Vec<PlatformMessage>,
     scrolling_chat: bool,
+    text_size: f32,
 }
 
 impl OmniChatter {
@@ -85,30 +111,9 @@ impl OmniChatter {
             receiver,
             platform_messages: Vec::new(),
             scrolling_chat: false,
+            text_size: 12.,
         }
     }
-}
-
-pub fn run(
-    command_handler: Arc<Mutex<CommandHandler>>,
-    receiver: UnboundedReceiver<PlatformMessage>,
-) -> Result<(), eframe::Error> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
-            .with_title("Omnichatter")
-            .with_min_inner_size([600.0, 300.0]),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "OmniChatter",
-        options,
-        Box::new(|_cc| {
-            // This gives us image support:
-            //egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::<OmniChatter>::new(OmniChatter::new(command_handler, receiver))
-        }),
-    )
 }
 
 impl eframe::App for OmniChatter {
@@ -116,6 +121,12 @@ impl eframe::App for OmniChatter {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // TODO: make it lock-safe aka not fail on lock error
         let mut command_handler = self.command_handler.lock().unwrap();
+
+        // TODO?: Cloning this over and over doesn't seem right
+        let font_id = FontId {
+            size: self.text_size,
+            family: FontFamily::Proportional,
+        };
 
         match self.receiver.try_recv() {
             Ok(msg) => {
@@ -129,18 +140,16 @@ impl eframe::App for OmniChatter {
             },
         };
 
-        // TODO: Make this not that bad
         if let State::ChatFullScreen = self.state {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                if ui.button("toggle fullscreen").clicked() {
+                if ui.button(RichText::new("toggle fullscreen").font(font_id.clone())).clicked() {
                     self.state = match self.state {
                         // TODO: keep track of last state
                         State::ChatFullScreen => State::Idle,
                         _ => State::ChatFullScreen,
-                    }
+                    };
                 }
-                // TODO: set self.scrolling_chat to true when scroll detected
                 ScrollArea::vertical()
                     .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
                     .show(ui, |ui| {
@@ -150,8 +159,9 @@ impl eframe::App for OmniChatter {
                                     Platform::Youtube => Color32::RED,
                                     Platform::Twitch => Color32::from_rgb(191, 148, 255),
                                 };
-                                ui.label(RichText::new(" ").background_color(color));
-                                let tmp = ui.add(Label::new(format!("[{}] {}", sender, msg)).wrap(true));
+                                ui.label(RichText::new(" ").font(font_id.clone()).background_color(color));
+                                let tmp =
+                                    ui.add(Label::new(RichText::new(format!("[{}] {}", sender, msg)).font(font_id.clone())).wrap(true));
                                 if !self.scrolling_chat {
                                     tmp.scroll_to_me(None);
                                 }
@@ -159,7 +169,7 @@ impl eframe::App for OmniChatter {
                         }
                     });
                 if self.scrolling_chat {
-                    if ui.button("resume scrolling").clicked() {
+                    if ui.button(RichText::new("resume scrolling").font(font_id.clone())).clicked() {
                         self.scrolling_chat = true
                     }
                 }
@@ -181,15 +191,15 @@ impl eframe::App for OmniChatter {
             //  -------------------------------------------
             egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 20.0;
-                ui.label(RichText::new("Omnichatter").heading().strong())
+                ui.label(RichText::new("Omnichatter").heading().font(font_id.clone()).strong())
             });
 
             egui::SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                ui.text_edit_singleline(&mut self.command_search);
+                ui.add(TextEdit::multiline(&mut self.command_search).font(font_id.clone()));
                 for command_name in command_handler.get_command_names() {
                     if self.command_search.len() == 0 || command_name.starts_with(&self.command_search) {
-                        if ui.button(&*command_name).clicked() {
+                        if ui.button(RichText::new(&*command_name).font(font_id.clone())).clicked() {
                             self.command_search = String::new();
                             self.current_command = command_handler.get_command(&command_name);
                             self.state = State::DisplayCommand;
@@ -197,27 +207,40 @@ impl eframe::App for OmniChatter {
                     };
                 }
                 ui.add(Separator::default().horizontal());
-                if ui.button("Create command").clicked() {
+                if ui.button(RichText::new("Create command").font(font_id.clone())).clicked() {
                     self.current_command = BotCommand {
                         name: String::new(),
                         contents: String::new(),
                     };
                     self.state = State::CreateCommand;
                 };
+                let config_button = Button::image(
+                    Image::new(include_image!("../images/gear.png"))
+                        .rounding(5.)
+                        .max_width(32.)
+                        .show_loading_spinner(true),
+                );
+                if ui.add(config_button).clicked() {
+                    self.state = State::Config;
+                }
             });
             egui::CentralPanel::default().show(ctx, |ui| {
                 // TODO: parametrize that and use manual positioning on Widgets
                 ui.spacing_mut().item_spacing.x = 10.0;
                 ui.spacing_mut().item_spacing.y = 10.0;
                 ui.scope(|ui| match self.state {
+                    State::Config => {
+                        ui.add(egui::Slider::new(&mut self.text_size, (10.)..=40.).text(RichText::new("Font size").font(font_id.clone())));
+                    }
                     State::DisplayCommand => {
-                        ui.strong(&self.current_command.name);
+                        ui.strong(RichText::new(&self.current_command.name).font(font_id.clone()));
                         let available_rect = ctx.available_rect();
                         let command_contents = TextEdit::multiline(&mut self.current_command.contents)
+                            .font(font_id.clone())
                             .min_size([(available_rect.right() / 10.) * 7., available_rect.bottom() / 10.].into());
                         ui.add(command_contents);
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                            if ui.button("Update").clicked() {
+                            if ui.button(RichText::new("Update").font(font_id.clone())).clicked() {
                                 command_handler
                                     .update_command_content(&self.current_command.name, &self.current_command.contents)
                                     .expect("Command to exist");
@@ -225,10 +248,11 @@ impl eframe::App for OmniChatter {
                                     Duration::from_secs_f32(1.25),
                                     format!("Command {} updated successfully", self.current_command.name),
                                     ToastLevel::Success,
+                                    font_id.clone(),
                                 ))
                             }
                             if ui
-                                .add(egui::Button::new("Delete").fill(Color32::from_rgb(94, 25, 25)))
+                                .add(Button::new(RichText::new("Delete").font(font_id.clone())).fill(Color32::from_rgb(94, 25, 25)))
                                 .clicked()
                             {
                                 command_handler
@@ -238,28 +262,30 @@ impl eframe::App for OmniChatter {
                                     Duration::from_secs_f32(1.25),
                                     format!("Command {} deleted successfully", self.current_command.name),
                                     ToastLevel::Success,
+                                    font_id.clone(),
                                 ));
                                 self.state = State::Idle;
                             }
                         });
                     }
                     State::CreateCommand => {
-                        ui.strong("Create command");
+                        ui.strong(RichText::new("Create command").font(font_id.clone()));
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                            ui.label("name:");
-                            ui.text_edit_singleline(&mut self.current_command.name);
+                            ui.label(RichText::new("name:").font(font_id.clone()));
+                            ui.add(TextEdit::multiline(&mut self.current_command.name).font(font_id.clone()));
                         });
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-                            ui.label("contents:");
-                            ui.text_edit_multiline(&mut self.current_command.contents);
+                            ui.label(RichText::new("contents:").font(font_id.clone()));
+                            ui.add(TextEdit::multiline(&mut self.current_command.contents).font(font_id.clone()));
                         });
-                        if ui.button("Create").clicked() {
+                        if ui.button(RichText::new("Create").font(font_id.clone())).clicked() {
                             match command_handler.create_command(&self.current_command) {
                                 Ok(_) => {
                                     self.toasts.push(Toast::new(
                                         Duration::from_secs_f32(2.5),
                                         format!("Command {} created successfully!", &self.current_command.name),
                                         ToastLevel::Success,
+                                        font_id.clone(),
                                     ));
                                     self.state = State::DisplayCommand
                                 }
@@ -267,12 +293,13 @@ impl eframe::App for OmniChatter {
                                     Duration::from_secs_f32(2.5),
                                     format!("Error creating command: {:?}", err),
                                     ToastLevel::Error,
+                                    font_id.clone(),
                                 )),
                             }
                         }
                     }
                     State::Idle => {
-                        ui.label("Select any command or action");
+                        ui.label(RichText::new("Select any command or action").font(font_id.clone()));
                     }
                     State::ChatFullScreen => {}
                 });
@@ -288,35 +315,39 @@ impl eframe::App for OmniChatter {
                 self.toasts = toasts;
                 //ui.image(egui::include_image!("../../../crates/egui/assets/ferris.png"));
             });
-            egui::SidePanel::right("right_panel").min_width(300.).show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 5.0;
-                if ui.button("toggle fullscreen").clicked() {
-                    self.state = State::ChatFullScreen
-                }
-                // TODO: set self.scrolling_chat to true when scroll detected
-                ScrollArea::vertical()
-                    .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
-                    .show(ui, |ui| {
-                        for PlatformMessage { msg, platform, sender } in &self.platform_messages {
-                            ui.horizontal(|ui| {
-                                let color = match platform {
-                                    Platform::Youtube => Color32::RED,
-                                    Platform::Twitch => Color32::from_rgb(191, 148, 255),
-                                };
-                                ui.label(RichText::new(" ").background_color(color));
-                                let tmp = ui.add(Label::new(format!("[{}] {}", sender, msg)).wrap(true));
-                                if !self.scrolling_chat {
-                                    tmp.scroll_to_me(None);
-                                }
-                            });
-                        }
-                    });
-                if self.scrolling_chat {
-                    if ui.button("resume scrolling").clicked() {
-                        self.scrolling_chat = true
+            egui::SidePanel::right("right_panel")
+                .default_width(300.)
+                .min_width(300.)
+                .show(ctx, |ui| {
+                    ui.spacing_mut().item_spacing.y = 5.0;
+                    if ui.button(RichText::new("toggle fullscreen").font(font_id.clone())).clicked() {
+                        self.state = State::ChatFullScreen
                     }
-                }
-            });
+                    // TODO: set self.scrolling_chat to true when scroll detected
+                    ScrollArea::vertical()
+                        .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+                        .show(ui, |ui| {
+                            for PlatformMessage { msg, platform, sender } in &self.platform_messages {
+                                ui.horizontal(|ui| {
+                                    let color = match platform {
+                                        Platform::Youtube => Color32::RED,
+                                        Platform::Twitch => Color32::from_rgb(191, 148, 255),
+                                    };
+                                    ui.label(RichText::new(" ").background_color(color).font(font_id.clone()));
+                                    let tmp =
+                                        ui.add(Label::new(RichText::new(format!("[{}] {}", sender, msg)).font(font_id.clone())).wrap(true));
+                                    if !self.scrolling_chat {
+                                        tmp.scroll_to_me(None);
+                                    }
+                                });
+                            }
+                        });
+                    if self.scrolling_chat {
+                        if ui.button(RichText::new("resume scrolling").font(font_id.clone())).clicked() {
+                            self.scrolling_chat = true
+                        }
+                    }
+                });
 
             // TODO: Add a button to toggle fullscreen chat
         }
@@ -337,9 +368,7 @@ impl Into<String> for &PlatformMessage {
                     + &self.msg
             }
             Platform::Youtube => {
-                RichText::new(" ").background_color(Color32::RED).text().to_owned()
-                    + &format!("[{}]", self.sender)
-                    + &self.msg
+                RichText::new(" ").background_color(Color32::RED).text().to_owned() + &format!("[{}]", self.sender) + &self.msg
             }
         }
     }
